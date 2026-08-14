@@ -1,0 +1,16 @@
+# dependencies / build output
+node_modules/
+dist/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# npm
+*.tgz
+
+# local-only deployment / conversation notes — never publish
+.private/

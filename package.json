@@ -1,0 +1,25 @@
+{
+  "name": "dsh-tool-autoexpand",
+  "version": "0.1.0",
+  "description": "Auto-expand tool-call cards in the DSH web GUI (with a sidebar toggle). Standard installable dsh client plugin.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js"
+  ],
+  "license": "MIT"
+}
