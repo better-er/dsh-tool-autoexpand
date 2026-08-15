@@ -32,32 +32,31 @@
 
 ## 要求
 
-- 是**标准形态的 dsh client 插件**，依赖部署方拉起 loader entry（见下方「安装」）。
-- 纯浏览器半身，无 host（node）服务。
-- 目前无公开 npm 包，需要以本地/仓库方式挂载；正式安装方式见「安装」。
+- 是**标准形态的 dsh client 插件**（声明 `dsh.client`、导出 `./client`）。
+- 同时声明了 `dsh.bundle`，因此也是一个**自挂载的 bundle 层插件**：用 `dsh plugin --profile <name> add` 从 GitHub 安装后，会被自动识别为 profile layer 并挂载，无需手工写组合 entry。
+- 纯浏览器半身，无 host（node）行为。
 
 ## 安装
 
-本插件通过部署的 Cordis 组合挂载，而非 `npm i` 直接使用。
+以 **GitHub 远程安装** 为推荐方式（与部署内其它 bundle 插件一致）。在目标 profile（如 `web`）执行：
 
-1. 将 `package.json`、`lib/` 复制到部署的共享 node_modules 下的 `dsh-tool-autoexpand/` 目录
-   （等价于注入一个可被 loader 解析的包）。
-2. 在部署的 web 组合文件中追加 loader entry：
+```powershell
+dsh plugin --profile web add github:better-er/dsh-tool-autoexpand
+```
 
-   ```yaml
-   - insert:
-       - id: dsh-tool-autoexpand
-         name: dsh-tool-autoexpand
-   ```
+- 该命令把包声明进 profile 的 `package.json`，并用 pnpm 从 GitHub 拉取到本地（对应提交哈希写入 `pnpm-lock.yaml`）。
+- 因本包声明了 `dsh.bundle.patch`，DSH 的 `reconcilePlugins` 会把 `dsh-tool-autoexpand` **自动追加到 `dsh.profile.bundles`**——它作为 profile bundle layer 自动挂载，包内 `cordis.patch.yml` 里的 insert 也会自动应用。
+- 重启 DSH web 后即生效，**无需手工编辑任何组合文件**。
 
-3. 重启 DSH web 进程。
-
-> 在你自己的机器上，`$DSH_HOME` 指 DSH 部署根（如 `~/.dsh`）。实际路径以你部署为准。
+> 安装后应用户层的 `cordis.patch.yml` insert 来挂载也仍成立，但既然已是 bundle 层，bundle 挂载才是正规路径，不必再手写。
 
 ## 卸载
 
-- 删除上一步的组合 entry；
-- 删除复制进去的 `dsh-tool-autoexpand/` 目录；
+```powershell
+dsh plugin --profile web remove dsh-tool-autoexpand
+```
+
+会从 `package.json` / `node_modules` 移除；因其是 `dsh.profile.bundles` 管理的 bundle 依赖（由 reconcile 加入），移除后也会自动从 `dsh.profile.bundles` 层去掉。重启 DSH web 后不再加载。
 - 重启 DSH web。
 
 ## 构建 / 打包

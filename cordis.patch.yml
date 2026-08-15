@@ -1,0 +1,10 @@
+# dsh-tool-autoexpand bundle patch: mount the auto-expand client plugin.
+#
+# Applied when this bundle appears in a profile's dsh.profile.bundles list.
+# The node half (package root) is a no-op Cordis plugin; the browser half
+# (dsh.client) is discovered automatically through the package's
+# dsh.client declaration + exports["./client"].
+
+- insert:
+    - id: dsh-tool-autoexpand
+      name: dsh-tool-autoexpand
