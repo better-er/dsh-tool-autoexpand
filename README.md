@@ -1,20 +1,26 @@
-# dsh-tool-autoexpand
+# dsh·工具结果自动展开插件
 
 自动展开 DSH 浏览器界面里随后新到达的工具调用卡片，并在侧栏底部提供一个一目了然的自定义开关（默认开）。
 
 纯浏览器端（client）插件，不替换任何原生工具卡片渲染器。
 
-![screenshot](docs/screenshot.png)
+侧栏底部的插件开关（默认开）：
 
-## 为什么值得
+![插件开关](docs/插件开关.png)
 
-每一次工具调用都是你与模型协作的关键时刻，本该一眼看清、立刻跟上。可层层收起的结果，让专注总被打断，让你在「找、点、等」之间反复横跳。
+## 引言
 
-**dsh-tool-autoexpand** 想让「看懂结果」这件事回归本能——新到达的结果自动展开，你的视线始终停留在结论上，而不是停留在展开按钮上。
+DeepSeek Harness 的工具调用，默认和 CloseAI 一样是**收着**的——结果全都藏在折叠里不给你看。可这哪符合开源精神？**Open**！所有的工具调用结果，就该统统打开。
 
-它不改变你的工作流，只替你把最琐碎、最机械的那一步去掉。少一次点击，多一分专注；一打开 DSH，它就安静地帮你省下成百上千次展开。
+于是祥云做了这个插件，专门帮你把 DeepSeek Harness 自动**开源**掉——新到达的工具调用结果全部自动展开。
 
-如果效率是有对手的，那它最大的对手就是这种随处可见、却总是被忽略的「小麻烦」。**这个插件，就是冲着这些小麻烦去的。**
+当然，为了避免无意义的刷屏，这个「打开」是**短打开模式**：只执行一级展开，而不会把那些修改行统统二级展开。既能看到结论，又不糊一脸改动细节。
+
+这样，你就能**爽爽监工 DeepSeek Harness**——它每一步在背后做了什么，都摊开在你眼皮子底下，清清楚楚。
+
+却没想到，这狡猾的**蓝色大肥鱼**，就在你眼皮子底下偷偷啃着你的 Token——拿着你的钱上网玩儿去了（上图 DSH 偷吃图）：
+
+![DSH 偷吃图](docs/偷吃图.png)
 
 ## 功能
 
@@ -23,12 +29,11 @@
 - 侧栏底部开关卡：图标 + 标题 + ON/OFF 状态胶囊 + 一句效果说明，随 DSH 明/暗主题自适应。
 - 整卡可点击，`aria-pressed` 同步状态；切换即启用/停用，无需重启。
 
-```
-┌──────────────────────────────────────┐
-│ ▶  展开工具调用            ON        │
-│     新到达的工具调用自动展开          │
-└──────────────────────────────────────┘
-```
+## 效果
+
+新到达的工具调用卡片自动展开后的实际效果：
+
+![dsh-tool-autoexpand](docs/展开效果.png)
 
 ## 要求
 
@@ -38,17 +43,11 @@
 
 ## 安装
 
-以 **GitHub 远程安装** 为推荐方式（与部署内其它 bundle 插件一致）。在目标 profile（如 `web`）执行：
-
 ```powershell
 dsh plugin --profile web add github:better-er/dsh-tool-autoexpand
 ```
 
-- 该命令把包声明进 profile 的 `package.json`，并用 pnpm 从 GitHub 拉取到本地（对应提交哈希写入 `pnpm-lock.yaml`）。
-- 因本包声明了 `dsh.bundle.patch`，DSH 的 `reconcilePlugins` 会把 `dsh-tool-autoexpand` **自动追加到 `dsh.profile.bundles`**——它作为 profile bundle layer 自动挂载，包内 `cordis.patch.yml` 里的 insert 也会自动应用。
-- 重启 DSH web 后即生效，**无需手工编辑任何组合文件**。
-
-> 安装后应用户层的 `cordis.patch.yml` insert 来挂载也仍成立，但既然已是 bundle 层，bundle 挂载才是正规路径，不必再手写。
+一条命令装完即生效（自动挂载，重启 DSH web 后启用），无需手工编辑任何组合文件。
 
 ## 卸载
 
@@ -56,32 +55,13 @@ dsh plugin --profile web add github:better-er/dsh-tool-autoexpand
 dsh plugin --profile web remove dsh-tool-autoexpand
 ```
 
-会从 `package.json` / `node_modules` 移除；因其是 `dsh.profile.bundles` 管理的 bundle 依赖（由 reconcile 加入），移除后也会自动从 `dsh.profile.bundles` 层去掉。重启 DSH web 后不再加载。
-- 重启 DSH web。
+彻底移除，重启 DSH web 后不再加载。
 
-## 构建 / 打包
+## 构建与原理
 
-无构建步骤。`lib/client.js` 是已经按 DSH client bundle 产出的注册式模块
-（`window.__ModuleLoader__.load({ id, factory })`），是源码也是产物。
-
-`package.json` 关键字段：
-
-- `dsh.client.platform: "web"` — 纯浏览器半身。
-- `exports["./client"]` → `./lib/client.js` — 浏览器入口。
-
-## 工作原理
-
-- 监听会话容器，捕获新渲染的 `[data-chat-flow-kind="tool-call"]` 节点。
-- 折叠展开策略：只点击**非 `<button>`** 的 `[aria-expanded="false"]` 元素
-  （即一级 DisclosureRow / bash 卡片折叠行），**跳过一切 `<button>`**，从而不误开内部行数折叠。
-- 侧栏开关通过 `sidebar.footer.action` 插槽注入。
-
-## 硬性约束（维护者请看）
-
-- `lib/client.js` 的 `factory` 必须以 `return module.exports` 结尾。
-  否则 loader 的 `materialize()` 取到的模块导出为 `undefined`，Cordis 挂载时抛
-  `invalid plugin, expect function or object with an "apply" method, received undefined`，
-  DSH 启动即 fail-loud。对照 DSH 自带 client bundle 的 factory 末尾正是 `return module.exports;`。
+- **无构建**：`lib/client.js`（`dsh.client.platform: "web"`、`exports["./client"] → ./lib/client.js`）是按 DSH client bundle 产出的注册式模块，源码即产物。
+- **展开原理**：监听会话容器捕获新渲染的 `[data-chat-flow-kind="tool-call"]` 节点，只点击**非 `<button>`** 的 `[aria-expanded="false"]` 折叠行，不误开内部行数折叠；侧栏开关经 `sidebar.footer.action` 插槽注入。
+- **硬性约束**：`lib/client.js` 的 `factory` 必须以 `return module.exports` 结尾，否则模块导出为 `undefined`，DSH 启动即 fail-loud。
 
 ## License
 
