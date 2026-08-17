@@ -35,6 +35,14 @@ DeepSeek Harness 的工具调用，默认和 CloseAI 一样是**收着**的—�
 
 ![dsh-tool-autoexpand](docs/展开效果.png)
 
+## 演示视频
+
+光看静态截图不过瘾？两位同好分别给这个插件拍了演示视频，还在标题上互相点名对方，欢迎点开对比观看：
+
+| 祥云版（34 秒） | dpsk 版（23 秒） |
+| :---: | :---: |
+| [![祥云版演示视频](https://i0.hdslb.com/bfs/archive/34370974cb39f14c42ae45d5ea054cd7efc50d72.jpg)](https://www.bilibili.com/video/BV1S4b16pEnB/) | [![dpsk 版演示视频](https://i0.hdslb.com/bfs/archive/00cf79289741dedb9208107d59b0430aec1149ff.jpg)](https://www.bilibili.com/video/BV1Mhb16DEYH/) |
+
 ## 要求
 
 - 是**标准形态的 dsh client 插件**（声明 `dsh.client`、导出 `./client`）。
