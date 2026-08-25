@@ -4,7 +4,7 @@
 
 纯浏览器端 client 插件，不替换任何原生工具卡片渲染器。
 
-![插件开关](docs/插件开关.png)
+![插件开关](docs/插件开关.webp)
 
 ## 引言
 
@@ -18,7 +18,7 @@ DeepSeek Harness 的工具调用，默认和 CloseAI 一样是**收着**的—�
 
 却没想到，这狡猾的**蓝色大肥鱼**，就在你眼皮子底下偷偷啃着你的 Token——拿着你的钱上网玩儿去了。
 
-![DSH 偷吃图](docs/偷吃图.png)
+![DSH 偷吃图](docs/偷吃图.webp)
 
 ## 功能
 
@@ -31,7 +31,7 @@ DeepSeek Harness 的工具调用，默认和 CloseAI 一样是**收着**的—�
 
 新到达的工具调用卡片自动展开后的实际效果：
 
-![dsh-tool-autoexpand](docs/展开效果.png)
+![dsh-tool-autoexpand](docs/展开效果.webp)
 
 ## 演示视频
 
