@@ -47,6 +47,8 @@ DeepSeek Harness 的工具调用，默认和 CloseAI 一样是**收着**的—�
 dsh plugin --profile web add github:better-er/dsh-tool-autoexpand
 ```
 
+或安装 npm 发布的版本：`dsh plugin --profile web add dsh-tool-autoexpand`。
+
 一条命令装完即生效，自动挂载，重启 DSH web 后启用，无需手工编辑任何组合文件。
 
 ## 卸载

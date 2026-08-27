@@ -1,6 +1,6 @@
 {
   "name": "dsh-tool-autoexpand",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Auto-expand tool-call cards in the DSH web GUI (with a sidebar toggle). Standard installable dsh client plugin.",
   "type": "module",
   "main": "lib/index.js",
