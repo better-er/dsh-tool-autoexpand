@@ -10,6 +10,10 @@
     "autoexpand",
     "ui"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/better-er/dsh-tool-autoexpand.git"
+  },
   "type": "module",
   "main": "lib/index.js",
   "exports": {
