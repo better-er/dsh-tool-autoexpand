@@ -1,0 +1,53 @@
+name: CI
+
+# 每次 push 到主分支、以及任何 PR 包括来自 fork 的 PR 都自动跑完整检查。
+# 本插件是纯 JS，无 TypeScript 源码、无构建步骤，lib/*.js 即发布产物。
+# 因此 CI 检查 = 语法检查 + 产物齐全校验，全绿才允许合并。
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    # fork PR 也可触发；此工作流不读写仓库 secrets，fork 环境下安全。
+    branches:
+      - main
+
+# 同一分支/PR 上排队的新提交会取消正在跑的旧任务，避免资源浪费。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: 语法检查 · 产物校验
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 本地与线上主推的运行时；插件零依赖，两个版本都验证一次。
+        node:
+          - 22
+          - 26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # 纯 JS 插件无需 npm install，直接对两个产物源做 ESM 语法校验。
+      - name: 语法检查 lib/*.js
+        run: |
+          node --check lib/index.js
+          node --check lib/client.js
+          echo "lib/index.js 与 lib/client.js 语法均通过"
+
+      # 出厂文件齐全性校验，缺失会在此失败，让 PR 作者一眼看到问题。
+      - name: 产物齐全性校验
+        run: |
+          test -f lib/index.js
+          test -f lib/client.js
+          test -f cordis.patch.yml
+          test -f package.json
+          echo "发布产物齐全：lib/index.js · lib/client.js · cordis.patch.yml · package.json"
