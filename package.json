@@ -1,7 +1,15 @@
 {
   "name": "dsh-tool-autoexpand",
-  "version": "0.1.2",
-  "description": "Auto-expand tool-call cards in the DSH web GUI (with a sidebar toggle). Standard installable dsh client plugin.",
+  "version": "0.2.0",
+  "description": "在 DSH web 界面自动展开工具调用卡片，支持侧边栏开关。标准可安装的 dsh 客户端插件。",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "tool-call",
+    "autoexpand",
+    "ui"
+  ],
   "type": "module",
   "main": "lib/index.js",
   "exports": {
