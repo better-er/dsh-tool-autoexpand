@@ -1,0 +1,102 @@
+name: Release
+
+# 推送形如 vX.Y.Z，如 v0.2.0，的 tag 时自动发版：
+#   凭 tag 号更新 package.json 版本并提交回 main → 语法/产物校验
+#   → 发布 npm → 生成 GitHub Release draft。人只需打一个 tag，其余自动衔接。
+# 注意：npm 发布依赖 npmjs 侧开启的 Trusted Publishing
+# npmjs.com → 本包 → Enable trusted publishing → 绑本仓库 GitHub Actions，
+# 无需配置 NPM_TOKEN；未开启时发布步骤会失败。
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish ${{ github.ref_name }} to npm
+    runs-on: ubuntu-latest
+    # id-token: write 供 Trusted Publishing 换取 npm 临时凭证，无需 NPM_TOKEN。
+    # 必须放在 job 级，GitHub 才会向该 job 注入 ACTIONS_ID_TOKEN_REQUEST_*。
+    permissions:
+      contents: write
+      id-token: write
+    # fork 永不触发 tag 发布，仅作为兜底防护。
+    if: startsWith(github.ref, 'refs/tags/v')
+    # 绑定 GitHub Actions environment「release」，使 OIDC subject 稳定为
+    # environment:release，npm 侧 Trusted Publisher 需填相同 Environment 名。
+    environment: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 回写 main 需要完整历史，故拉全量。
+          fetch-depth: 0
+          # 默认 GITHUB_TOKEN 在分支保护下会被拒，此处显式传 token。
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 版本号仅凭 tag 号决定，写入 package.json 并提交回 main。
+      - name: Sync version to main
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"          # 去 v 前缀得版本号，如 0.2.0
+          echo "target version = $TAG"
+
+          # 切到 main 分支再改版本，避免在 detached tag 上提交。
+          git checkout main
+          git config user.name  github-actions[bot]
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # 用临时文件改写 version 字段，保留其余内容不变。
+          node -e "
+            const fs = require('fs');
+            const p = require('./package.json');
+            p.version = process.argv[1];
+            fs.writeFileSync('./package.json', JSON.stringify(p, null, 2) + '\n');
+          " "$TAG"
+
+          # 已是最新版本则无改动，跳过提交；否则提交并推回 main。
+          git diff --quiet package.json || {
+            git add package.json
+            git commit -m "chore: release $TAG 同步 package.json 版本 [skip ci]"
+            git push origin main
+          }
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # 纯 JS 零依赖插件，无 lock 文件，故不启用 cache: npm；
+          # 否则 setup-node 会因找不到 package-lock.json 而直接失败。
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # 纯 JS 零依赖插件，无需 npm install；直接对两个产物源做 ESM 语法校验。
+      - name: 语法校验 lib/*.js
+        run: |
+          node --check lib/index.js
+          node --check lib/client.js
+          echo "lib/index.js 与 lib/client.js 语法均通过"
+
+      - name: 产物齐全性校验
+        run: |
+          test -f lib/index.js
+          test -f lib/client.js
+          test -f cordis.patch.yml
+          test -f package.json
+          echo "发布产物齐全"
+
+      # Trusted Publishing：npm 凭 workflow 的 OIDC 身份直接授权，
+      # 无需 NPM_TOKEN；--provenance 会在 npm 上附构建来源证明。
+      # node-version 24 保证捆绑 npm>=11.5.1，npm CLI 才能做 OIDC 自动换权发布。
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+
+      - name: Create GitHub Release draft
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
