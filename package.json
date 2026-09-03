@@ -1,6 +1,6 @@
 {
   "name": "dsh-tool-autoexpand",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "在 DSH web 界面自动展开工具调用卡片，支持侧边栏开关。标准可安装的 dsh 客户端插件。",
   "keywords": [
     "deepseek-harness",
