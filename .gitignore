@@ -1,6 +1,8 @@
 # dependencies / build output
 node_modules/
+lib/
 dist/
+*.tsbuildinfo
 *.log
 
 # OS / editor

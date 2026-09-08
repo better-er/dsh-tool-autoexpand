@@ -1,8 +1,8 @@
 name: CI
 
 # 每次 push 到主分支、以及任何 PR 包括来自 fork 的 PR 都自动跑完整检查。
-# 本插件是纯 JS，无 TypeScript 源码、无构建步骤，lib/*.js 即发布产物。
-# 因此 CI 检查 = 语法检查 + 产物齐全校验，全绿才允许合并。
+# 本插件是构建型：src/ 是源码，lib/ 是构建产物且不入库，因此 CI 必须先装依赖再构建。
+# PR 检查即门禁：typecheck / build / 产物校验三者全绿才允许合并。
 on:
   push:
     branches:
@@ -19,11 +19,11 @@ concurrency:
 
 jobs:
   check:
-    name: 语法检查 · 产物校验
+    name: typecheck · build · 产物校验
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # 本地与线上主推的运行时；插件零依赖，两个版本都验证一次。
+        # 本地与线上主推的运行时，两个版本都验证一次。
         node:
           - 22
           - 26
@@ -31,23 +31,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+          cache: pnpm
 
-      # 纯 JS 插件无需 npm install，直接对两个产物源做 ESM 语法校验。
-      - name: 语法检查 lib/*.js
-        run: |
-          node --check lib/index.js
-          node --check lib/client.js
-          echo "lib/index.js 与 lib/client.js 语法均通过"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
 
       # 出厂文件齐全性校验，缺失会在此失败，让 PR 作者一眼看到问题。
       - name: 产物齐全性校验
         run: |
           test -f lib/index.js
+          test -f lib/index.d.ts
           test -f lib/client.js
           test -f cordis.patch.yml
-          test -f package.json
-          echo "发布产物齐全：lib/index.js · lib/client.js · cordis.patch.yml · package.json"
+          node --check lib/index.js
+          node --check lib/client.js
+          echo "发布产物齐全：lib/index.js · lib/index.d.ts · lib/client.js · cordis.patch.yml"

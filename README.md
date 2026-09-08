@@ -50,13 +50,19 @@ DeepSeek Harness 的工具调用，默认和 CloseAI 一样是**收着**的—�
 
 ## 安装
 
+**从 GitHub 安装**：源码在 `src/`，`lib/` 不入仓库，安装时 npm 会触发 `prepare` 脚本现场构建。
+
 ```powershell
 dsh plugin --profile web add github:better-er/dsh-tool-autoexpand
 ```
 
-或安装 npm 发布的版本：`dsh plugin --profile web add dsh-tool-autoexpand`。
+**从 npm 安装**：包内已含构建产物 `lib/index.js` 与 `lib/client.js`，安装时不再构建。
 
-一条命令装完即生效，自动挂载，重启 DSH web 后启用，无需手工编辑任何组合文件。
+```powershell
+dsh plugin --profile web add dsh-tool-autoexpand
+```
+
+两种方式装完都会自动挂载，重启 DSH web 后启用，无需手工编辑任何文件。
 
 ## 卸载
 
@@ -71,7 +77,21 @@ dsh plugin --profile web remove dsh-tool-autoexpand
 - 是**标准形态的 dsh client 插件**，声明 `dsh.client`，导出 `./client`。
 - 同时声明了 `dsh.bundle`，因此也是一个**自挂载的 bundle 层插件**：用 `dsh plugin --profile <name> add` 从 GitHub 安装后，会被自动识别为 profile layer 并挂载，无需手工写组合 entry。
 - 纯浏览器半身，无 host 行为。
-- 无构建：`lib/client.js` 是按 DSH client bundle 产出的注册式模块，源码即产物。
+- 构建型插件：`src/` 是 TypeScript 源码，`lib/` 是构建产物且不入库，安装或发布前由 `prepare` 构建。
+
+## 开发
+
+```powershell
+pnpm install
+pnpm run typecheck   # tsc -b 严格类型检查
+pnpm run build       # tsc -b && tsdown，产出 lib/index.js 与 lib/client.js
+```
+
+- `src/index.ts`：node 半身，空操作的 Cordis 插件。
+- `src/client/index.tsx`：浏览器半身，自动展开逻辑与侧栏开关。
+- `src/client/style.ts`：侧栏开关卡片的样式。
+- 构建用 tsdown，client 产物仍是 `window.__ModuleLoader__.load({ id, factory })` 的注册式模块，`react` 等平台模块保持外部依赖。
+- `prepare` 只跑 tsdown、不做类型检查，因此从 GitHub 安装时能自包含构建出 `lib/`。
 
 ## License
 
