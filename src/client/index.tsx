@@ -10,10 +10,9 @@
  *
  * @module dsh-tool-autoexpand/client
  */
-import { useState, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import { ensureStyle, removeStyle } from './style.ts'
 
 /** 插件名，同时也是配置项 id。 */
 export const name = 'dsh-tool-autoexpand'
@@ -55,6 +54,63 @@ const MODE_META: Record<Mode, ModeMeta> = {
   3: { pill: '折叠　', title: '展开工具调用：折叠', desc: '全部折叠' },
 }
 
+/** sidebar.footer.action 槽位注入的 owner 面。 */
+interface ToggleProps {
+  /** 侧栏是否为宽栏；false 表示收起成窄 rail。 */
+  readonly wide: boolean
+}
+
+/** 开关卡头部一行：图标、标题、状态胶囊。 */
+const HEAD_STYLE: CSSProperties = { display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }
+/** 收起态头部去掉间距，只留居中的图标。 */
+const HEAD_COLLAPSED_STYLE: CSSProperties = { ...HEAD_STYLE, gap: 0 }
+/** 头部左侧图标。 */
+const ICON_STYLE: CSSProperties = {
+  display: 'inline-flex',
+  flex: 'none',
+  width: '16px',
+  height: '16px',
+  alignItems: 'center',
+  justifyContent: 'center',
+  opacity: 0.85,
+}
+/** 卡片标题。 */
+const TITLE_STYLE: CSSProperties = {
+  fontSize: '12.5px',
+  fontWeight: 600,
+  lineHeight: '16px',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+}
+/** 卡片副标题，说明当前档位做了什么。 */
+const DESC_STYLE: CSSProperties = {
+  fontSize: '11px',
+  lineHeight: '14px',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  color: 'var(--dsw-alias-label-secondary)',
+}
+/** 头部右侧的状态胶囊，三态平等，靠文字区分。 */
+const PILL_STYLE: CSSProperties = {
+  marginLeft: 'auto',
+  flex: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '5px',
+  height: '20px',
+  padding: '0 7px',
+  borderRadius: '10px',
+  border: '1px solid var(--dsw-alias-border-l2)',
+  background: 'var(--dsw-alias-surface-elevated)',
+  fontSize: '10.5px',
+  lineHeight: 1,
+  fontWeight: 600,
+  letterSpacing: '.2px',
+  color: 'var(--dsw-alias-label-secondary)',
+}
+
 /**
  * 把自动展开逻辑与侧栏开关挂到客户端上下文。
  * @param ctx 客户端根上下文。
@@ -75,7 +131,6 @@ export function apply(ctx: ClientContext): void {
   const handled: WeakSet<Element> | null = typeof WeakSet !== 'undefined' ? new WeakSet<Element>() : null
   let observer: MutationObserver | null = null
   let retryDisposers: Array<() => void> = []
-  let styleTag: HTMLStyleElement | null = null
 
   /**
    * 只展开工具调用卡片的顶层折叠行。
@@ -240,17 +295,84 @@ export function apply(ctx: ClientContext): void {
     )
   }
 
-  /** 侧栏底部的开关卡，点击在四档间循环。 */
-  function Toggle(): ReactElement {
+  /** 侧栏底部的开关卡，点击在四档间循环；样式全部内联，不注入任何 CSS。 */
+  function Toggle({ wide }: ToggleProps): ReactElement {
     const [mode, setMode] = useState<Mode>(state.mode)
+    const [hovered, setHovered] = useState(false)
+    const [pressed, setPressed] = useState(false)
+    const ref = useRef<HTMLButtonElement | null>(null)
     const meta = MODE_META[mode]
+
+    // 侧栏底部是行方向 flex 容器，本卡要占满整行，得把容器改成纵向排列。
+    // 原先靠 CSS 的 :has() 选择器，这里直接改容器内联样式，卸载时还原。
+    useEffect(() => {
+      const el = ref.current
+      if (!el) return
+      const container = el.closest<HTMLElement>('[class*="footerActions"]')
+      if (!container) return
+      const previousDirection = container.style.flexDirection
+      const previousAlign = container.style.alignItems
+      container.style.flexDirection = 'column'
+      container.style.alignItems = wide ? 'stretch' : 'center'
+      return () => {
+        container.style.flexDirection = previousDirection
+        container.style.alignItems = previousAlign
+      }
+    }, [wide])
+
+    const background = pressed
+      ? 'var(--dsw-alias-interactive-bg-active)'
+      : hovered
+        ? 'var(--dsw-alias-interactive-bg-hover)'
+        : 'transparent'
+
+    const buttonStyle: CSSProperties = wide
+      ? {
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '5px',
+          width: '100%',
+          minWidth: 0,
+          padding: '7px 9px 8px',
+          border: `1px solid ${hovered ? 'var(--dsw-alias-border-l2)' : 'var(--dsw-alias-border-l1)'}`,
+          borderRadius: '9px',
+          background,
+          cursor: 'pointer',
+          textAlign: 'left',
+          color: 'var(--dsw-alias-label-primary)',
+          fontFamily: 'inherit',
+          transition: 'background .12s ease,border-color .12s ease',
+        }
+      : {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '36px',
+          height: '36px',
+          padding: 0,
+          border: '1px solid transparent',
+          borderRadius: '12px',
+          background,
+          cursor: 'pointer',
+          color: 'var(--dsw-alias-label-primary)',
+          fontFamily: 'inherit',
+        }
+
     return (
       <button
-        className="dshe-toolx-toggle"
+        ref={ref}
         data-mode={String(mode)}
         type="button"
         title={meta.title}
         aria-label={meta.title}
+        style={buttonStyle}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => {
+          setHovered(false)
+          setPressed(false)
+        }}
+        onMouseDown={() => setPressed(true)}
+        onMouseUp={() => setPressed(false)}
         onClick={() => {
           const next = ((mode + 1) % 4) as Mode
           setMode(next)
@@ -259,14 +381,14 @@ export function apply(ctx: ClientContext): void {
           applyMode(next)
         }}
       >
-        <div className="dshe-toolx-head">
-          <span className="dshe-toolx-icon" aria-hidden="true">
+        <span style={wide ? HEAD_STYLE : HEAD_COLLAPSED_STYLE}>
+          <span style={ICON_STYLE} aria-hidden="true">
             <ToolExpandIcon />
           </span>
-          <span className="dshe-toolx-title">展开工具调用</span>
-          <span className="dshe-toolx-pill">{meta.pill}</span>
-        </div>
-        <div className="dshe-toolx-desc">{meta.desc}</div>
+          {wide && <span style={TITLE_STYLE}>展开工具调用</span>}
+          {wide && <span style={PILL_STYLE}>{meta.pill}</span>}
+        </span>
+        {wide && <span style={DESC_STYLE}>{meta.desc}</span>}
       </button>
     )
   }
@@ -283,12 +405,9 @@ export function apply(ctx: ClientContext): void {
   )
 
   ctx.effect(() => {
-    if (DOC) styleTag = ensureStyle(DOC)
     applyMode(state.mode)
     return () => {
       stop()
-      if (DOC) removeStyle(DOC, styleTag)
-      styleTag = null
     }
   })
 }

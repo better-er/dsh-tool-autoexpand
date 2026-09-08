@@ -89,7 +89,7 @@ pnpm run build       # tsc -b && tsdown，产出 lib/index.js 与 lib/client.js
 
 - `src/index.ts`：node 半身，空操作的 Cordis 插件。
 - `src/client/index.tsx`：浏览器半身，自动展开逻辑与侧栏开关。
-- `src/client/style.ts`：侧栏开关卡片的样式。
+- 开关卡片的样式全部内联，不注入 `<style>`、不依赖自定义 class；侧栏收起态由槽位注入的 `wide` 判断。
 - 构建用 tsdown，client 产物仍是 `window.__ModuleLoader__.load({ id, factory })` 的注册式模块，`react` 等平台模块保持外部依赖。
 - `prepare` 只跑 tsdown、不做类型检查，因此从 GitHub 安装时能自包含构建出 `lib/`。
 
