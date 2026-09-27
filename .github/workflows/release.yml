@@ -38,8 +38,27 @@ jobs:
           # 默认 GITHUB_TOKEN 在分支保护下会被拒，此处显式传 token。
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 版本号仅凭 tag 号决定，写入 package.json 并提交回 main。
+      # 前置守卫：仅当该 tag 版本尚未发布到 npm 时才继续发版。
+      # 补历史 tag 时对应版本早已在 npm 上，重复 publish 会报错，且版本回写会把 main 改回旧号，故已发布则跳过后续所有步骤。
+      # npm view 只读 registry，无需凭证。
+      - name: Skip when tag version already published
+        id: published
+        run: |
+          set -euo pipefail
+          PKG="dsh-tool-autoexpand"
+          TAG="${GITHUB_REF_NAME#v}"
+          if npm view "$PKG@$TAG" version >/dev/null 2>&1; then
+            echo "已存在 $PKG@$TAG，跳过发布"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "未发布 $PKG@$TAG，继续"
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 版本号以源码里的 package.json 为准，正常随改动一起提交，发版前与将要打的 tag 对齐。
+      # 这一步只是兜底：忘改或写错时在此对齐 tag 号，再提交回 main。
       - name: Sync version to main
+        if: steps.published.outputs.published != 'true'
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME#v}"          # 去 v 前缀得版本号，如 0.3.0
@@ -66,38 +85,50 @@ jobs:
           }
 
       - name: Setup pnpm
+        if: steps.published.outputs.published != 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 9.15.9
 
+      # setup-node 的 registry-url 告知 npm 向哪个 registry 换 Trusted Publishing 临时凭证。
+      # node-version 与本地 node -v 锁死同一版本。它同时满足 npm 官方 Trusted Publishing 的下限：捆绑 npm 需大于等于 11.5.1，否则 npm CLI 无法做 OIDC 自动换权，会回退用失效 token 导致 PUT 404 is not in registry。
       - name: Setup Node
+        if: steps.published.outputs.published != 'true'
         uses: actions/setup-node@v4
         with:
-          # node-version 24 保证捆绑 npm>=11.5.1，npm CLI 才能做 OIDC 自动换权发布。
-          node-version: 24
+          node-version: 26.3.1
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
+        if: steps.published.outputs.published != 'true'
         run: pnpm install --frozen-lockfile
 
+      # 本插件暂无单测，以类型检查作为发布前的最后一道门。
+      - name: Typecheck
+        if: steps.published.outputs.published != 'true'
+        run: pnpm typecheck
+
       - name: Build
+        if: steps.published.outputs.published != 'true'
         run: pnpm run build
 
-      - name: 产物齐全性校验
+      - name: Verify build outputs
+        if: steps.published.outputs.published != 'true'
         run: |
           test -f lib/index.js
           test -f lib/index.d.ts
           test -f lib/client.js
           test -f cordis.patch.yml
-          echo "发布产物齐全"
+          echo "构建产物齐全：lib/index.js · lib/index.d.ts · lib/client.js · cordis.patch.yml"
 
-      # Trusted Publishing：npm 凭 workflow 的 OIDC 身份直接授权，
-      # 无需 NPM_TOKEN；--provenance 会在 npm 上附构建来源证明。
+      # Trusted Publishing：npm 凭 workflow 的 OIDC 身份直接授权，无需 NPM_TOKEN；--provenance 会在 npm 上附构建来源证明。
       - name: Publish to npm
-        run: pnpm publish --no-git-checks --provenance --access public
+        if: steps.published.outputs.published != 'true'
+        run: npm publish --provenance --access public
 
       - name: Create GitHub Release draft
+        if: steps.published.outputs.published != 'true'
         uses: softprops/action-gh-release@v2
         with:
           draft: true
