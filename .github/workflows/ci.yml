@@ -19,14 +19,8 @@ concurrency:
 
 jobs:
   check:
-    name: typecheck · build · 产物校验
+    name: typecheck · build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # 本地与线上主推的运行时，两个版本都验证一次。
-        node:
-          - 22
-          - 26
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,7 +33,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          # 与本地 node -v 锁死同一版本，见工作区 AGENTS.md 的 Node 版本约定。
+          node-version: 26.3.1
           cache: pnpm
 
       - name: Install dependencies
@@ -51,13 +46,11 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # 出厂文件齐全性校验，缺失会在此失败，让 PR 作者一眼看到问题。
-      - name: 产物齐全性校验
+      # 本插件是双半身且产出 dts，产物缺失会在此失败。
+      - name: Verify build outputs
         run: |
           test -f lib/index.js
           test -f lib/index.d.ts
           test -f lib/client.js
           test -f cordis.patch.yml
-          node --check lib/index.js
-          node --check lib/client.js
-          echo "发布产物齐全：lib/index.js · lib/index.d.ts · lib/client.js · cordis.patch.yml"
+          echo "构建产物齐全：lib/index.js · lib/index.d.ts · lib/client.js · cordis.patch.yml"

@@ -111,6 +111,32 @@ const PILL_STYLE: CSSProperties = {
   color: 'var(--dsw-alias-label-secondary)',
 }
 
+/** 提示图标：点开或悬浮时给出抗折叠说明。 */
+const HINT_ICON_STYLE: CSSProperties = {
+  flex: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '14px',
+  height: '14px',
+  borderRadius: '50%',
+  border: '1px solid var(--dsw-alias-border-l2)',
+  fontSize: '9.5px',
+  lineHeight: 1,
+  fontWeight: 600,
+  color: 'var(--dsw-alias-label-secondary)',
+  cursor: 'pointer',
+}
+
+/** 提示行：说明抗折叠该用 DSH 自带的展示模式，插件不再重复实现。 */
+const HINT_STYLE: CSSProperties = {
+  fontSize: '10.5px',
+  lineHeight: '14px',
+  whiteSpace: 'normal',
+  color: 'var(--dsw-alias-label-secondary)',
+  opacity: 0.85,
+}
+
 /**
  * 把自动展开逻辑与侧栏开关挂到客户端上下文。
  * @param ctx 客户端根上下文。
@@ -127,10 +153,90 @@ export function apply(ctx: ClientContext): void {
   const storedMode = readStoredMode()
   if (storedMode !== null) state.mode = storedMode
 
-  /** 已处理过的卡片根节点，避免观察器重复展开同一张卡。 */
-  const handled: WeakSet<Element> | null = typeof WeakSet !== 'undefined' ? new WeakSet<Element>() : null
   let observer: MutationObserver | null = null
-  let retryDisposers: Array<() => void> = []
+  /** 待清理的延迟重试取消函数，触发后自动移除，避免长会话里不断堆积。 */
+  const retryDisposers = new Set<() => void>()
+
+  /**
+   * 展开包含卡片的 turn-process 折叠组。
+   *
+   * next 把一次回合里的工具调用收进 turn-process 组，组内卡片带 hidden="until-found"，
+   * 不先点开组按钮，卡片不会现身。按卡片的 data-chat-turn 找到同一回合的组按钮。
+   * 旧版没有这一层，选择器匹配为空，天然无副作用。
+   */
+  function expandOwningTurnProcess(root: Element): void {
+    if (!DOC) return
+    const turn = root.getAttribute('data-chat-turn')
+    const selector = turn === null
+      ? '[data-chat-flow-kind="turn-process"] button[data-turn-process][aria-expanded="false"]'
+      : `[data-chat-flow-kind="turn-process"] button[data-turn-process="${CSS.escape(turn)}"][aria-expanded="false"]`
+    for (const el of DOC.querySelectorAll<HTMLElement>(selector)) {
+      if (isDisabled(el)) continue
+      try {
+        el.click()
+      } catch (error) {
+        console.warn('[dsh-tool-autoexpand] expand turn-process failed:', error)
+      }
+    }
+  }
+
+  /**
+   * 折叠按钮选择器：过程组抬头与命令／工具活动按钮。
+   *
+   * next 把它们都做成 aria-expanded 开合状态，默认折叠。
+   * 内层「… 其余 N 行」是真 button，不在选择器里，保持不动。
+   */
+  const COLLAPSED_SELECTOR = [
+    'button[data-turn-process][aria-expanded="false"]',
+    'button[data-process-activity][aria-expanded="false"]',
+  ].join(',')
+
+  /**
+   * 逐层补扫的时间点。
+   *
+   * PTC 模式下代码卡片点开后，嵌套的工具调用行才会挂载，点开嵌套行后参数行才会挂载，
+   * 一次点击展不开两层，所以在这些时间点各补一轮扫描。
+   */
+  const RETRY_DELAYS = [150, 400, 850]
+
+  /** 展开 scope 内所有处于折叠态的过程组抬头与活动按钮。 */
+  function expandCollapsedIn(scope: Element | Document): void {
+    const targets: HTMLElement[] = []
+    if (scope instanceof HTMLElement && scope.matches(COLLAPSED_SELECTOR)) {
+      targets.push(scope)
+    }
+    for (const el of scope.querySelectorAll<HTMLElement>(COLLAPSED_SELECTOR)) {
+      targets.push(el)
+    }
+    for (const el of targets) {
+      if (isDisabled(el)) continue
+      try {
+        el.click()
+      } catch (error) {
+        console.warn('[dsh-tool-autoexpand] expand collapsed element failed:', error)
+      }
+    }
+  }
+
+  /**
+   * 排一次延迟重试，触发后自动从待清理集合移除。
+   * @param run 延迟执行的回调。
+   * @param delayMs 延迟毫秒数。
+   */
+  function retryLater(run: () => void, delayMs: number): void {
+    let dispose: () => void = () => {}
+    dispose = timer.timeout(() => {
+      retryDisposers.delete(dispose)
+      run()
+    }, delayMs)
+    retryDisposers.add(dispose)
+  }
+
+  /** 展开后按固定间隔补几轮，等折叠行逐层渲染完成。 */
+  function expandCollapsedInWithRetries(scope: Element): void {
+    expandCollapsedIn(scope)
+    for (const delay of RETRY_DELAYS) retryLater(() => expandCollapsedIn(scope), delay)
+  }
 
   /**
    * 只展开工具调用卡片的顶层折叠行。
@@ -140,6 +246,8 @@ export function apply(ctx: ClientContext): void {
    */
   function expandCard(root: Element): void {
     if (!(root instanceof HTMLElement)) return
+    // 先点开外层的过程组，卡片才会从 hidden 状态现身。
+    expandOwningTurnProcess(root)
     for (const el of root.querySelectorAll<HTMLElement>('[aria-expanded="false"]')) {
       if (el.tagName === 'BUTTON') continue // 内层「展开其余 N 行」开关，跳过
       if (isDisabled(el)) continue
@@ -151,11 +259,10 @@ export function apply(ctx: ClientContext): void {
     }
   }
 
-  /** 展开后补两次重试，等卡片内部结构渲染完成再补点一次。 */
+  /** 展开后按固定间隔补几轮，等卡片内部的嵌套折叠行逐层渲染完成。 */
   function expandCardWithRetries(root: Element): void {
     expandCard(root)
-    retryDisposers.push(timer.timeout(() => expandCard(root), 180))
-    retryDisposers.push(timer.timeout(() => expandCard(root), 450))
+    for (const delay of RETRY_DELAYS) retryLater(() => expandCard(root), delay)
   }
 
   /**
@@ -185,6 +292,7 @@ export function apply(ctx: ClientContext): void {
   /** 展开页面上所有已存在的工具调用卡片，开关切到展开档时调用。 */
   function expandAll(): void {
     if (!DOC) return
+    expandCollapsedIn(DOC)
     for (const root of DOC.querySelectorAll('[data-chat-flow-kind="tool-call"]')) expandCard(root)
   }
 
@@ -201,7 +309,7 @@ export function apply(ctx: ClientContext): void {
         dispose()
       } catch {}
     }
-    retryDisposers = []
+    retryDisposers.clear()
   }
 
   /** 观察根节点，选择 #root 以便覆盖整个会话流。 */
@@ -216,22 +324,24 @@ export function apply(ctx: ClientContext): void {
     const target = rootTarget()
     if (!target) return
     observer = new MutationObserver((mutations) => {
+      // 一次回调可能插入整棵子树，先归并节点再统一处理，避免同一张卡片被重复排队。
+      const added = new Set<Element>()
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
-          if (!(node instanceof Element)) continue
-          const roots = node.matches('[data-chat-flow-kind="tool-call"]')
-            ? [node]
-            : Array.from(node.querySelectorAll('[data-chat-flow-kind="tool-call"]'))
-          for (const root of roots) {
-            if (!(root instanceof HTMLElement)) continue
-            if (handled) {
-              if (handled.has(root)) continue
-              handled.add(root)
-            }
-            expandCardWithRetries(root)
-          }
+          if (node instanceof Element) added.add(node)
         }
       }
+      if (added.size === 0) return
+      const cards = new Set<Element>()
+      for (const node of added) {
+        expandCollapsedInWithRetries(node)
+        if (node.matches('[data-chat-flow-kind="tool-call"]')) cards.add(node)
+        for (const card of node.querySelectorAll('[data-chat-flow-kind="tool-call"]')) cards.add(card)
+        // 嵌套的工具调用行在卡片内部后渲染，新增节点自身不是卡片，得向上找最近的卡片祖先。
+        const owner = node.closest('[data-chat-flow-kind="tool-call"]')
+        if (owner) cards.add(owner)
+      }
+      for (const card of cards) expandCardWithRetries(card)
     })
     observer.observe(target, { childList: true, subtree: true })
   }
@@ -300,6 +410,7 @@ export function apply(ctx: ClientContext): void {
     const [mode, setMode] = useState<Mode>(state.mode)
     const [hovered, setHovered] = useState(false)
     const [pressed, setPressed] = useState(false)
+    const [showHint, setShowHint] = useState(false)
     const ref = useRef<HTMLButtonElement | null>(null)
     const meta = MODE_META[mode]
 
@@ -386,9 +497,26 @@ export function apply(ctx: ClientContext): void {
             <ToolExpandIcon />
           </span>
           {wide && <span style={TITLE_STYLE}>展开工具调用</span>}
+          {wide && mode === 1 && (
+            <span
+              style={HINT_ICON_STYLE}
+              role="button"
+              tabIndex={0}
+              title="轮次结束时 DSH 会收回展开，想常开请把展示模式切成「完全展开」"
+              aria-label="展开说明"
+              aria-expanded={showHint}
+              onClick={(event) => {
+                event.stopPropagation()
+                setShowHint(value => !value)
+              }}
+            >?</span>
+          )}
           {wide && <span style={PILL_STYLE}>{meta.pill}</span>}
         </span>
         {wide && <span style={DESC_STYLE}>{meta.desc}</span>}
+        {wide && mode === 1 && showHint && (
+          <span style={HINT_STYLE}>轮次结束时 DSH 会收回展开，想常开请把展示模式切成「完全展开」</span>
+        )}
       </button>
     )
   }
