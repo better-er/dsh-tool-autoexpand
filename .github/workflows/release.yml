@@ -111,7 +111,7 @@ jobs:
 
       - name: Build
         if: steps.published.outputs.published != 'true'
-        run: pnpm run build
+        run: pnpm build
 
       - name: Verify build outputs
         if: steps.published.outputs.published != 'true'
