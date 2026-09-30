@@ -11,7 +11,8 @@
  * @module dsh-tool-autoexpand/client
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 
 /** 插件名，同时也是配置项 id。 */
