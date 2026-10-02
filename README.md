@@ -1,4 +1,4 @@
-# dsh·工具结果自动展开插件
+# DSH·工具结果自动展开
 
 自动展开 DSH 浏览器界面里随后新到达的工具调用卡片，并在侧栏底部提供**四态逻辑 + 三态 UI** 的开关：在「展开 / 不干预 / 折叠」三态间循环切换，默认展开。
 
@@ -83,8 +83,8 @@ dsh plugin --profile web remove dsh-tool-autoexpand
 
 ```powershell
 pnpm install
-pnpm run typecheck   # tsc -b 严格类型检查
-pnpm run build       # tsc -b && tsdown，产出 lib/index.js 与 lib/client.js
+pnpm typecheck   # tsc -b 严格类型检查
+pnpm build       # tsc -b && tsdown，产出 lib/index.js 与 lib/client.js
 ```
 
 - `src/index.ts`：node 半身，空操作的 Cordis 插件。
