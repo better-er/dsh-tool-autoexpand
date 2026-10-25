@@ -39,6 +39,21 @@ interface ModeMeta {
 /** localStorage 键名，沿用旧版以便无缝升级。 */
 const STORE_KEY = 'dsh-tool-autoexpand.enabled'
 
+/** 默认不自动展开的读取类工具名，展开后内容太长会刷屏。 */
+const SKIP_TOOLS = ['read', 'read_remote']
+
+/**
+ * 命中读取类工具卡的选择器。
+ * read 与通用卡片用 data-tool 标注；dsh-remote-file-system 自绘的 read_remote 卡片根只有专用 class，
+ * 所以补一条 .dsh-rfs-root 兜底。
+ */
+const SKIP_TOOL_SCOPE = `${SKIP_TOOLS.map(name => `[data-tool="${name}"]`).join(', ')}, .dsh-rfs-root`
+
+/** 元素是否位于默认不展开的读取类工具卡内部。 */
+function insideSkippedTool(el: Element): boolean {
+  return el.closest(SKIP_TOOL_SCOPE) !== null
+}
+
 /** 非按钮元素也可能带 disabled 属性，读不到时按未禁用处理。 */
 function isDisabled(el: HTMLElement): boolean {
   return (el as HTMLElement & { disabled?: boolean }).disabled === true
@@ -211,6 +226,8 @@ export function apply(ctx: ClientContext): void {
     }
     for (const el of targets) {
       if (isDisabled(el)) continue
+      // 读取类工具卡默认保持收起，避免整页原文直接铺开。
+      if (insideSkippedTool(el)) continue
       try {
         el.click()
       } catch (error) {
@@ -252,6 +269,8 @@ export function apply(ctx: ClientContext): void {
     for (const el of root.querySelectorAll<HTMLElement>('[aria-expanded="false"]')) {
       if (el.tagName === 'BUTTON') continue // 内层「展开其余 N 行」开关，跳过
       if (isDisabled(el)) continue
+      // 读取类工具卡与其嵌套子调用默认不展开。
+      if (insideSkippedTool(el)) continue
       try {
         el.click()
       } catch (error) {
