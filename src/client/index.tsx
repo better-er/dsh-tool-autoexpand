@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 /** 插件名，同时也是配置项 id。 */
 export const name = 'dsh-tool-autoexpand'
 /** 本插件需要的客户端服务。 */
-export const inject = ['slots', 'timer']
+export const inject = ['slots', 'timer', 'locale']
 
 /** 定时器服务的最小面，用于展开后补几次重试。 */
 interface TimerService {
@@ -43,6 +43,7 @@ type Lang = 'zh' | 'en'
 interface Copy {
   readonly cardTitle: string
   readonly hint: string
+  readonly modeLabel: string
   readonly hintAriaLabel: string
   readonly modes: Record<Mode, ModeMeta>
 }
@@ -51,7 +52,8 @@ interface Copy {
 const COPY: Record<Lang, Copy> = {
   zh: {
     cardTitle: '展开工具调用',
-    hint: '轮次结束时 DSH 会收回展开，想常开请把展示模式切成「完全展开」',
+    hint: '轮次结束时 DSH 会收回展开，想常开请把展示模式切成「{mode}」',
+    modeLabel: '完全展开',
     hintAriaLabel: '展开说明',
     modes: {
       0: { pill: '不干预', title: '展开工具调用：不干预', desc: '不做处理' },
@@ -62,7 +64,8 @@ const COPY: Record<Lang, Copy> = {
   },
   en: {
     cardTitle: 'Expand tool calls',
-    hint: 'DSH re-collapses when the turn ends. To keep it open, set Work details to "Verbose".',
+    hint: 'DSH re-collapses when the turn ends. To keep it open, set Work details to "{mode}".',
+    modeLabel: 'Verbose',
     hintAriaLabel: 'Expansion hint',
     modes: {
       0: { pill: 'Leave', title: 'Expand tool calls: Leave alone', desc: 'No action' },
@@ -94,6 +97,23 @@ function detectLang(ctx: ClientContext, doc: Document | null): Lang {
   const navLang = typeof navigator !== 'undefined' ? navigator.language?.trim() : ''
   if (navLang) return resolveLang(navLang)
   return 'zh'
+}
+
+/**
+ * 读取宿主当前语言下「完全展开」档位的名称。
+ * 通过 `chat` 字典取设置项文案；服务、字典或键缺失时返回 null，调用方改用内置档位名。
+ */
+function hostModeName(ctx: ClientContext): string | null {
+  const getService = ctx.get as ((service: string) => unknown) | undefined
+  const locale = typeof getService === 'function'
+    ? (getService.call(ctx, 'locale') as { bind?: (ns: string) => (key: string) => string } | undefined)
+    : undefined
+  if (locale === undefined || typeof locale.bind !== 'function') return null
+  const tChat = locale.bind('chat')
+  if (typeof tChat !== 'function') return null
+  const name = tChat('settings.transcript.verbose')
+  if (typeof name !== 'string' || name === '' || name === 'settings.transcript.verbose') return null
+  return name
 }
 
 /** localStorage 键名，沿用旧版以便无缝升级。 */
@@ -478,25 +498,27 @@ export function apply(ctx: ClientContext): void {
   function Toggle({ wide }: ToggleProps): ReactElement {
     const [mode, setMode] = useState<Mode>(state.mode)
     const [lang, setLang] = useState<Lang>(() => detectLang(ctx, DOC))
+    const [modeName, setModeName] = useState<string | null>(() => hostModeName(ctx))
     const [hovered, setHovered] = useState(false)
     const [pressed, setPressed] = useState(false)
     const [showHint, setShowHint] = useState(false)
     const ref = useRef<HTMLButtonElement | null>(null)
     const copy = COPY[lang]
     const meta = copy.modes[mode]
+    const hint = copy.hint.replace('{mode}', () => modeName ?? copy.modeLabel)
 
-    // 监听宿主语言切换，使侧栏文案随界面语言即时更新。
+    // 监听宿主语言切换，使侧栏文案与引用的设置项名称随界面语言即时更新。
     useEffect(() => {
-      setLang(detectLang(ctx, DOC))
+      const refresh = (): void => {
+        setLang(detectLang(ctx, DOC))
+        setModeName(hostModeName(ctx))
+      }
+      refresh()
       const subscribe = (ctx as {
-        on?: (event: string, listener: (snapshot: { active?: string }) => void) => (() => void) | undefined
+        on?: (event: string, listener: () => void) => (() => void) | undefined
       }).on
       if (typeof subscribe !== 'function') return
-      const dispose = subscribe.call(ctx, 'locale/change', (snapshot) => {
-        if (typeof snapshot?.active === 'string' && snapshot.active.trim() !== '') {
-          setLang(resolveLang(snapshot.active))
-        }
-      })
+      const dispose = subscribe.call(ctx, 'locale/change', refresh)
       return typeof dispose === 'function' ? dispose : undefined
     }, [])
 
@@ -588,7 +610,7 @@ export function apply(ctx: ClientContext): void {
               style={HINT_ICON_STYLE}
               role="button"
               tabIndex={0}
-              title={copy.hint}
+              title={hint}
               aria-label={copy.hintAriaLabel}
               aria-expanded={showHint}
               onClick={(event) => {
@@ -601,7 +623,7 @@ export function apply(ctx: ClientContext): void {
         </span>
         {wide && <span style={DESC_STYLE}>{meta.desc}</span>}
         {wide && mode === 1 && showHint && (
-          <span style={HINT_STYLE}>{copy.hint}</span>
+          <span style={HINT_STYLE}>{hint}</span>
         )}
       </button>
     )
