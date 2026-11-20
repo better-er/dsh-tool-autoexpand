@@ -36,6 +36,66 @@ interface ModeMeta {
   readonly desc: string
 }
 
+/** 支持的界面语言。 */
+type Lang = 'zh' | 'en'
+
+/** 开关组件全部界面文案。 */
+interface Copy {
+  readonly cardTitle: string
+  readonly hint: string
+  readonly hintAriaLabel: string
+  readonly modes: Record<Mode, ModeMeta>
+}
+
+/** 中英文双语文案表，逻辑有 4 档而界面保留「不干预 / 展开 / 折叠」三种外观。 */
+const COPY: Record<Lang, Copy> = {
+  zh: {
+    cardTitle: '展开工具调用',
+    hint: '轮次结束时 DSH 会收回展开，想常开请把展示模式切成「完全展开」',
+    hintAriaLabel: '展开说明',
+    modes: {
+      0: { pill: '不干预', title: '展开工具调用：不干预', desc: '不做处理' },
+      1: { pill: '　展开', title: '展开工具调用：展开', desc: '全部展开' },
+      2: { pill: '不干预', title: '展开工具调用：不干预', desc: '不做处理' },
+      3: { pill: '折叠　', title: '展开工具调用：折叠', desc: '全部折叠' },
+    },
+  },
+  en: {
+    cardTitle: 'Expand tool calls',
+    hint: 'DSH re-collapses when the turn ends. To keep it open, set Work details to "Verbose".',
+    hintAriaLabel: 'Expansion hint',
+    modes: {
+      0: { pill: 'Leave', title: 'Expand tool calls: Leave alone', desc: 'No action' },
+      1: { pill: 'Expand', title: 'Expand tool calls: Expand', desc: 'Expand all' },
+      2: { pill: 'Leave', title: 'Expand tool calls: Leave alone', desc: 'No action' },
+      3: { pill: 'Collapse', title: 'Expand tool calls: Collapse', desc: 'Collapse all' },
+    },
+  },
+}
+
+/** 将语言标识归一为 `en` 或 `zh`，未知或缺失时回退为 `zh`。 */
+function resolveLang(raw: string | undefined): Lang {
+  const normalized = raw?.trim().toLowerCase() ?? ''
+  if (normalized.startsWith('en')) return 'en'
+  if (normalized.startsWith('zh')) return 'zh'
+  return 'zh'
+}
+
+/** 按宿主 locale 服务、`document.documentElement.lang`、`navigator.language` 顺序探测语言。 */
+function detectLang(ctx: ClientContext, doc: Document | null): Lang {
+  const getService = ctx.get as ((service: string) => unknown) | undefined
+  const locale = typeof getService === 'function'
+    ? (getService.call(ctx, 'locale') as { getSnapshot?: () => { active?: string } } | undefined)
+    : undefined
+  const active = locale?.getSnapshot?.()?.active?.trim()
+  if (active) return resolveLang(active)
+  const docLang = doc?.documentElement?.lang?.trim()
+  if (docLang) return resolveLang(docLang)
+  const navLang = typeof navigator !== 'undefined' ? navigator.language?.trim() : ''
+  if (navLang) return resolveLang(navLang)
+  return 'zh'
+}
+
 /** localStorage 键名，沿用旧版以便无缝升级。 */
 const STORE_KEY = 'dsh-tool-autoexpand.enabled'
 
@@ -57,17 +117,6 @@ function insideSkippedTool(el: Element): boolean {
 /** 非按钮元素也可能带 disabled 属性，读不到时按未禁用处理。 */
 function isDisabled(el: HTMLElement): boolean {
   return (el as HTMLElement & { disabled?: boolean }).disabled === true
-}
-
-/**
- * 四态逻辑 + 三态 UI 的档位元数据。
- * 逻辑有 4 档，但 0 与 2 同为「不干预」，界面上合并显示为同一种三态外观，只保留「不干预 / 展开 / 折叠」三种可感知状态。
- */
-const MODE_META: Record<Mode, ModeMeta> = {
-  0: { pill: '不干预', title: '展开工具调用：不干预', desc: '不做处理' },
-  1: { pill: '　展开', title: '展开工具调用：展开', desc: '全部展开' },
-  2: { pill: '不干预', title: '展开工具调用：不干预', desc: '不做处理' },
-  3: { pill: '折叠　', title: '展开工具调用：折叠', desc: '全部折叠' },
 }
 
 /** sidebar.footer.action 槽位注入的 owner 面。 */
@@ -428,11 +477,28 @@ export function apply(ctx: ClientContext): void {
   /** 侧栏底部的开关卡，点击在四档间循环；样式全部内联，不注入任何 CSS。 */
   function Toggle({ wide }: ToggleProps): ReactElement {
     const [mode, setMode] = useState<Mode>(state.mode)
+    const [lang, setLang] = useState<Lang>(() => detectLang(ctx, DOC))
     const [hovered, setHovered] = useState(false)
     const [pressed, setPressed] = useState(false)
     const [showHint, setShowHint] = useState(false)
     const ref = useRef<HTMLButtonElement | null>(null)
-    const meta = MODE_META[mode]
+    const copy = COPY[lang]
+    const meta = copy.modes[mode]
+
+    // 监听宿主语言切换，使侧栏文案随界面语言即时更新。
+    useEffect(() => {
+      setLang(detectLang(ctx, DOC))
+      const subscribe = (ctx as {
+        on?: (event: string, listener: (snapshot: { active?: string }) => void) => (() => void) | undefined
+      }).on
+      if (typeof subscribe !== 'function') return
+      const dispose = subscribe.call(ctx, 'locale/change', (snapshot) => {
+        if (typeof snapshot?.active === 'string' && snapshot.active.trim() !== '') {
+          setLang(resolveLang(snapshot.active))
+        }
+      })
+      return typeof dispose === 'function' ? dispose : undefined
+    }, [])
 
     // 侧栏底部是行方向 flex 容器，本卡要占满整行，得把容器改成纵向排列。
     // 原先靠 CSS 的 :has() 选择器，这里直接改容器内联样式，卸载时还原。
@@ -516,14 +582,14 @@ export function apply(ctx: ClientContext): void {
           <span style={ICON_STYLE} aria-hidden="true">
             <ToolExpandIcon />
           </span>
-          {wide && <span style={TITLE_STYLE}>展开工具调用</span>}
+          {wide && <span style={TITLE_STYLE}>{copy.cardTitle}</span>}
           {wide && mode === 1 && (
             <span
               style={HINT_ICON_STYLE}
               role="button"
               tabIndex={0}
-              title="轮次结束时 DSH 会收回展开，想常开请把展示模式切成「完全展开」"
-              aria-label="展开说明"
+              title={copy.hint}
+              aria-label={copy.hintAriaLabel}
               aria-expanded={showHint}
               onClick={(event) => {
                 event.stopPropagation()
@@ -535,7 +601,7 @@ export function apply(ctx: ClientContext): void {
         </span>
         {wide && <span style={DESC_STYLE}>{meta.desc}</span>}
         {wide && mode === 1 && showHint && (
-          <span style={HINT_STYLE}>轮次结束时 DSH 会收回展开，想常开请把展示模式切成「完全展开」</span>
+          <span style={HINT_STYLE}>{copy.hint}</span>
         )}
       </button>
     )
